@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  UtensilsCrossed, Shirt, Wallet, Package, ArrowLeft, Plus, Check,
+  UtensilsCrossed, Shirt, Wallet, Package, Receipt, ArrowLeft, Plus, Check,
   Link2, MapPin, Phone, User, Clock, Sparkles, ChevronRight, Loader2,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
@@ -21,8 +21,9 @@ const SERIF = "'Fraunces', Georgia, serif";
 const SANS = "'Karla', system-ui, sans-serif";
 
 const KIND_COPY = {
-  food: { label: "food", accent: K.lamp, icon: UtensilsCrossed, linkLabel: "Swiggy link", linkPlaceholder: "Paste the restaurant or dish link", notesLabel: "What to order", notesPlaceholder: "2 butter chicken, 1 garlic naan, extra raita", confirmWindow: "Confirmed within 15 minutes, during meal windows." },
-  clothing: { label: "clothing", accent: K.rose, icon: Shirt, linkLabel: "Myntra link", linkPlaceholder: "Paste the product link", notesLabel: "Size & details", notesPlaceholder: "Size M, blue if it's in stock", confirmWindow: "Confirmed within one business day." },
+  food: { label: "food", accent: K.lamp, icon: UtensilsCrossed, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link to the restaurant or dish", notesLabel: "What to order", notesPlaceholder: "2 butter chicken, 1 garlic naan, extra raita", confirmWindow: "Confirmed within 15 minutes, during meal windows." },
+  clothing: { label: "clothing", accent: K.rose, icon: Shirt, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link to the item", notesLabel: "Size & details", notesPlaceholder: "Size M, blue if it's in stock", confirmWindow: "Confirmed within one business day." },
+  gift: { label: "gift", accent: K.leaf, icon: Package, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link, or describe the gift below", notesLabel: "What to send", notesPlaceholder: "A box of sweets, flowers, and a card", confirmWindow: "Confirmed within one business day." },
 };
 
 const inputStyle = { width: "100%", border: `1px solid ${K.creamDeep}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, fontFamily: SANS, color: K.ink, background: "#fff", outline: "none", boxSizing: "border-box" };
@@ -45,20 +46,28 @@ function AppHeader({ setScreen, walletBalance }) {
   );
 }
 
-function ChoiceCard({ kind, onClick }) {
-  const c = KIND_COPY[kind]; const Icon = c.icon;
-  const desc = kind === "food" ? "A meal from Swiggy, delivered today." : "An outfit from Myntra, chosen by you.";
-  const title = kind === "food" ? "Order food" : "Order clothing";
+const CHOICES = [
+  { kind: "food", title: "Order food", desc: "A meal delivered to their door, today.", icon: UtensilsCrossed, accent: K.lamp },
+  { kind: "clothing", title: "Order clothing", desc: "An outfit for the occasion, chosen by you.", icon: Shirt, accent: K.rose },
+  { kind: "gift", title: "Send a gift", desc: "Sweets, flowers, or something special.", icon: Package, accent: K.leaf },
+  { kind: "bills", title: "Pay a bill", desc: "Cover a utility or bill back home.", icon: Receipt, accent: K.slate, soon: true },
+];
+
+function ChoiceCard({ choice, onClick }) {
+  const Icon = choice.icon;
+  const disabled = !!choice.soon;
   return (
-    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 16, padding: 20, cursor: "pointer" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: `${c.accent}1A`, color: c.accent }}>
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} className={disabled ? "" : "choice-lift"} style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 16, padding: 20, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1, position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: `${choice.accent}1A`, color: choice.accent }}>
         <Icon size={24} />
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, color: K.ink }}>{title}</div>
-        <div style={{ fontSize: 14, color: K.slate, marginTop: 2 }}>{desc}</div>
+        <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, color: K.ink }}>{choice.title}</div>
+        <div style={{ fontSize: 14, color: K.slate, marginTop: 2 }}>{choice.desc}</div>
       </div>
-      <ChevronRight size={20} color={K.slate} />
+      {choice.soon
+        ? <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: K.slate, background: K.creamDeep, padding: "4px 10px", borderRadius: 999 }}>SOON</span>
+        : <ChevronRight size={20} color={K.slate} />}
     </button>
   );
 }
@@ -69,8 +78,9 @@ function AppHome({ setScreen }) {
       <h1 style={{ fontFamily: SERIF, fontSize: 27, fontWeight: 600, color: K.ink, margin: "0 0 4px" }}>Welcome</h1>
       <p style={{ color: K.slate, fontSize: 15, margin: "0 0 26px" }}>What are you sending home today?</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <ChoiceCard kind="food" onClick={() => setScreen("food")} />
-        <ChoiceCard kind="clothing" onClick={() => setScreen("clothing")} />
+        {CHOICES.map((choice) => (
+          <ChoiceCard key={choice.kind} choice={choice} onClick={() => setScreen(choice.kind)} />
+        ))}
       </div>
     </div>
   );
@@ -105,14 +115,15 @@ function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
   const [error, setError] = useState("");
 
   function handleSubmit() {
-    if (!link.trim()) return setError("Add a link so we know exactly what to order.");
+    if (!link.trim() && !notes.trim()) return setError("Add a link or describe what to send in the notes.");
     if (!budget || Number(budget) <= 0) return setError("Set a budget cap.");
     if (!recipientName.trim() || !recipientAddress.trim()) return setError("Add who this is for, and where it's going.");
     if (Number(budget) > walletBalance) return setError(`Your wallet has $${walletBalance} — add funds before sending this.`);
     setError("");
+    const titles = { food: `Dinner for ${recipientName}`, clothing: `${recipientName}'s order`, gift: `Gift for ${recipientName}` };
     onSubmit({
       kind,
-      title: kind === "food" ? `Dinner for ${recipientName}` : `${recipientName}'s order`,
+      title: titles[kind] || `${recipientName}'s order`,
       recipient_name: recipientName,
       recipient_phone: recipientPhone,
       recipient_address: recipientAddress,
@@ -130,7 +141,7 @@ function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
       <div style={{ padding: "8px 20px 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <c.icon size={20} color={c.accent} />
-          <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: K.ink, margin: 0 }}>{kind === "food" ? "Order food" : "Order clothing"}</h2>
+          <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: K.ink, margin: 0 }}>{kind === "food" ? "Order food" : kind === "clothing" ? "Order clothing" : "Send a gift"}</h2>
         </div>
         <p style={{ color: K.slate, fontSize: 14, margin: "0 0 22px" }}>Paste a link, tell us the details, and our India team takes it from there.</p>
 
@@ -310,6 +321,8 @@ export default function App() {
         input:focus, textarea:focus { border-color: ${K.night} !important; }
         input::placeholder, textarea::placeholder { color: ${K.mist}; opacity: 0.75; }
         .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+        .choice-lift { transition: transform .18s ease, box-shadow .18s ease; }
+        .choice-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(20,27,52,0.10); }
       `}</style>
       <AppHeader setScreen={setScreen} walletBalance={walletBalance} />
       {screen === "home" && <AppHome setScreen={setScreen} />}
