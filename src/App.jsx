@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
   UtensilsCrossed, Shirt, Wallet, Package, Receipt, ArrowLeft, Plus, Check,
-  Link2, MapPin, Phone, User, Clock, Sparkles, ChevronRight, Loader2,
+  Link2, MapPin, Phone, User, Clock, Sparkles, ChevronRight, Loader2, Gem,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
 /*
   SETHU — customer ordering app (connected to Supabase)
-  Home -> Food/Clothing request forms -> Wallet -> Orders.
-  When an order is submitted, it SAVES into the Supabase 'orders' table,
-  so the ops dashboard (built next) can read it. This is the customer->ops bridge.
+  Two directions:
+    to_india   -> Send food / clothing / gifts to family in India (original flow)
+    from_india -> Order Indian clothing / gifts / handicrafts shipped to a US address
+  Orders SAVE into the Supabase 'orders' table (now with a 'direction' column),
+  so the ops dashboard can read and process them.
 */
 
 const K = {
@@ -20,13 +22,25 @@ const K = {
 const SERIF = "'Fraunces', Georgia, serif";
 const SANS = "'Karla', system-ui, sans-serif";
 
+// Copy for the SEND-TO-INDIA flow (original)
 const KIND_COPY = {
   food: { label: "food", accent: K.lamp, icon: UtensilsCrossed, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link to the restaurant or dish", notesLabel: "What to order", notesPlaceholder: "2 butter chicken, 1 garlic naan, extra raita", confirmWindow: "Confirmed within 15 minutes, during meal windows." },
   clothing: { label: "clothing", accent: K.rose, icon: Shirt, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link to the item", notesLabel: "Size & details", notesPlaceholder: "Size M, blue if it's in stock", confirmWindow: "Confirmed within one business day." },
   gift: { label: "gift", accent: K.leaf, icon: Package, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link, or describe the gift below", notesLabel: "What to send", notesPlaceholder: "A box of sweets, flowers, and a card", confirmWindow: "Confirmed within one business day." },
 };
 
+// Copy for the ORDER-FROM-INDIA flow (new, India -> US)
+const IMPORT_KIND_COPY = {
+  clothing: { label: "clothing", accent: K.rose, icon: Shirt, linkLabel: "Link (optional)", linkPlaceholder: "Paste a Myntra / Ajio / brand link, or describe it", notesLabel: "Size & details", notesPlaceholder: "Saree, kurta, size M, the color you want", confirmWindow: "Confirmed within one business day · ships from India in ~5–10 days." },
+  gift: { label: "gift & handicrafts", accent: K.leaf, icon: Package, linkLabel: "Link (optional)", linkPlaceholder: "Paste a link, or describe the gift / handicraft", notesLabel: "What to send", notesPlaceholder: "Brass decor, jewelry, festival items, sweets box", confirmWindow: "Confirmed within one business day · ships from India in ~5–10 days." },
+  grocery: { label: "groceries", accent: K.lamp, icon: UtensilsCrossed, linkLabel: "Link (optional)", linkPlaceholder: "Describe the snacks / groceries", notesLabel: "What to send", notesPlaceholder: "Snacks, spices, pickles", confirmWindow: "Coming soon." },
+};
+
 const inputStyle = { width: "100%", border: `1px solid ${K.creamDeep}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, fontFamily: SANS, color: K.ink, background: "#fff", outline: "none", boxSizing: "border-box" };
+
+function copyFor(direction, kind) {
+  return (direction === "from_india" ? IMPORT_KIND_COPY : KIND_COPY)[kind] || KIND_COPY.food;
+}
 
 function AppHeader({ setScreen, walletBalance }) {
   return (
@@ -46,11 +60,18 @@ function AppHeader({ setScreen, walletBalance }) {
   );
 }
 
+// Choices for each direction
 const CHOICES = [
   { kind: "food", title: "Order food", desc: "A meal delivered to their door, today.", icon: UtensilsCrossed, accent: K.lamp },
   { kind: "clothing", title: "Order clothing", desc: "An outfit for the occasion, chosen by you.", icon: Shirt, accent: K.rose },
   { kind: "gift", title: "Send a gift", desc: "Sweets, flowers, or something special.", icon: Package, accent: K.leaf },
   { kind: "bills", title: "Pay a bill", desc: "Cover a utility or bill back home.", icon: Receipt, accent: K.slate, soon: true },
+];
+
+const IMPORT_CHOICES = [
+  { kind: "clothing", title: "Order clothing from India", desc: "Sarees, kurtas, wedding wear — shipped to you.", icon: Shirt, accent: K.rose },
+  { kind: "gift", title: "Gifts & handicrafts", desc: "Jewelry, decor, festival items, sweets.", icon: Gem, accent: K.leaf },
+  { kind: "grocery", title: "Groceries & snacks", desc: "Indian snacks, spices, pickles.", icon: UtensilsCrossed, accent: K.lamp, soon: true },
 ];
 
 function ChoiceCard({ choice, onClick }) {
@@ -72,13 +93,35 @@ function ChoiceCard({ choice, onClick }) {
   );
 }
 
-function AppHome({ setScreen }) {
+function DirectionToggle({ direction, setDirection }) {
+  const isImport = direction === "from_india";
+  const pill = (active) => ({
+    flex: 1, padding: "9px 10px", borderRadius: 999, border: "none", cursor: "pointer",
+    fontFamily: SANS, fontSize: 13.5, fontWeight: 700,
+    background: active ? K.night : "transparent", color: active ? K.cream : K.slate,
+  });
   return (
-    <div style={{ maxWidth: 460, margin: "0 auto", padding: "34px 20px 40px" }}>
-      <h1 style={{ fontFamily: SERIF, fontSize: 27, fontWeight: 600, color: K.ink, margin: "0 0 4px" }}>Welcome</h1>
-      <p style={{ color: K.slate, fontSize: 15, margin: "0 0 26px" }}>What are you sending home today?</p>
+    <div style={{ display: "flex", gap: 4, background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 999, padding: 4, marginBottom: 22 }}>
+      <button style={pill(!isImport)} onClick={() => setDirection("to_india")}>Send to India</button>
+      <button style={pill(isImport)} onClick={() => setDirection("from_india")}>Order from India</button>
+    </div>
+  );
+}
+
+function AppHome({ setScreen, direction, setDirection }) {
+  const isImport = direction === "from_india";
+  const choices = isImport ? IMPORT_CHOICES : CHOICES;
+  return (
+    <div style={{ maxWidth: 460, margin: "0 auto", padding: "26px 20px 40px" }}>
+      <DirectionToggle direction={direction} setDirection={setDirection} />
+      <h1 style={{ fontFamily: SERIF, fontSize: 27, fontWeight: 600, color: K.ink, margin: "0 0 4px" }}>
+        {isImport ? "Order from India" : "Welcome"}
+      </h1>
+      <p style={{ color: K.slate, fontSize: 15, margin: "0 0 26px" }}>
+        {isImport ? "What should we send you from India?" : "What are you sending home today?"}
+      </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {CHOICES.map((choice) => (
+        {choices.map((choice) => (
           <ChoiceCard key={choice.kind} choice={choice} onClick={() => setScreen(choice.kind)} />
         ))}
       </div>
@@ -106,31 +149,44 @@ function Field({ label, icon, children }) {
   );
 }
 
-function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
-  const c = KIND_COPY[kind];
+function RequestForm({ kind, direction, walletBalance, onSubmit, onBack, submitting }) {
+  const isImport = direction === "from_india";
+  const c = copyFor(direction, kind);
   const [link, setLink] = useState(""); const [notes, setNotes] = useState("");
   const [deliveryWindow, setDeliveryWindow] = useState("lunch"); const [budget, setBudget] = useState("");
   const [recipientName, setRecipientName] = useState(""); const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientAddress, setRecipientAddress] = useState(""); const [occasion, setOccasion] = useState("");
   const [error, setError] = useState("");
 
+  const headings = isImport
+    ? { clothing: "Order clothing from India", gift: "Gifts & handicrafts", grocery: "Groceries & snacks" }
+    : { food: "Order food", clothing: "Order clothing", gift: "Send a gift" };
+  const heading = headings[kind] || "New request";
+
   function handleSubmit() {
-    if (!link.trim() && !notes.trim()) return setError("Add a link or describe what to send in the notes.");
+    if (!link.trim() && !notes.trim()) return setError("Add a link or describe what to order.");
     if (!budget || Number(budget) <= 0) return setError("Set a budget cap.");
-    if (!recipientName.trim() || !recipientAddress.trim()) return setError("Add who this is for, and where it's going.");
+    if (!recipientName.trim() || !recipientAddress.trim()) return setError(isImport ? "Add your name and your US delivery address." : "Add who this is for, and where it's going.");
     if (Number(budget) > walletBalance) return setError(`Your wallet has $${walletBalance} — add funds before sending this.`);
     setError("");
-    const titles = { food: `Dinner for ${recipientName}`, clothing: `${recipientName}'s order`, gift: `Gift for ${recipientName}` };
+    let title;
+    if (isImport) {
+      title = kind === "clothing" ? `${recipientName}'s clothing from India` : `${recipientName}'s order from India`;
+    } else {
+      const titles = { food: `Dinner for ${recipientName}`, clothing: `${recipientName}'s order`, gift: `Gift for ${recipientName}` };
+      title = titles[kind] || `${recipientName}'s order`;
+    }
     onSubmit({
+      direction,
       kind,
-      title: titles[kind] || `${recipientName}'s order`,
+      title,
       recipient_name: recipientName,
       recipient_phone: recipientPhone,
       recipient_address: recipientAddress,
       item_link: link,
       notes,
       budget: Number(budget),
-      delivery_window: kind === "food" ? deliveryWindow : null,
+      delivery_window: (!isImport && kind === "food") ? deliveryWindow : null,
       occasion,
     });
   }
@@ -141,14 +197,18 @@ function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
       <div style={{ padding: "8px 20px 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <c.icon size={20} color={c.accent} />
-          <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: K.ink, margin: 0 }}>{kind === "food" ? "Order food" : kind === "clothing" ? "Order clothing" : "Send a gift"}</h2>
+          <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: K.ink, margin: 0 }}>{heading}</h2>
         </div>
-        <p style={{ color: K.slate, fontSize: 14, margin: "0 0 22px" }}>Paste a link, tell us the details, and our India team takes it from there.</p>
+        <p style={{ color: K.slate, fontSize: 14, margin: "0 0 22px" }}>
+          {isImport
+            ? "Paste a link or describe the item. Our India team sources it and ships it to your US address."
+            : "Paste a link, tell us the details, and our India team takes it from there."}
+        </p>
 
         <Field label={c.linkLabel} icon={Link2}><input style={inputStyle} value={link} onChange={(e) => setLink(e.target.value)} placeholder={c.linkPlaceholder} /></Field>
         <Field label={c.notesLabel}><textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={c.notesPlaceholder} /></Field>
 
-        {kind === "food" && (
+        {!isImport && kind === "food" && (
           <Field label="When should it arrive?" icon={Clock}>
             <div style={{ display: "flex", gap: 8 }}>
               {[{ id: "lunch", label: "Lunch · 12–2pm IST" }, { id: "dinner", label: "Dinner · 7–10pm IST" }].map((opt) => (
@@ -164,10 +224,10 @@ function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
             <input style={{ ...inputStyle, paddingLeft: 24 }} value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="25" inputMode="decimal" />
           </div>
         </Field>
-        <Field label="Who's this for?" icon={User}><input style={inputStyle} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient's name" /></Field>
-        <Field label="Their phone number" icon={Phone}><input style={inputStyle} value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="+91 ..." /></Field>
-        <Field label="Delivery address in India" icon={MapPin}><textarea style={{ ...inputStyle, minHeight: 62, resize: "vertical" }} value={recipientAddress} onChange={(e) => setRecipientAddress(e.target.value)} placeholder="Street, city, PIN code" /></Field>
-        <Field label="Occasion (optional)" icon={Sparkles}><input style={inputStyle} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Just because, a birthday, Diwali..." /></Field>
+        <Field label={isImport ? "Your name" : "Who's this for?"} icon={User}><input style={inputStyle} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder={isImport ? "Your name" : "Recipient's name"} /></Field>
+        <Field label={isImport ? "Your phone number" : "Their phone number"} icon={Phone}><input style={inputStyle} value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder={isImport ? "+1 ..." : "+91 ..."} /></Field>
+        <Field label={isImport ? "Your US delivery address" : "Delivery address in India"} icon={MapPin}><textarea style={{ ...inputStyle, minHeight: 62, resize: "vertical" }} value={recipientAddress} onChange={(e) => setRecipientAddress(e.target.value)} placeholder={isImport ? "Street, city, state, ZIP" : "Street, city, PIN code"} /></Field>
+        <Field label="Occasion (optional)" icon={Sparkles}><input style={inputStyle} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder={isImport ? "Wedding, Diwali, just because..." : "Just because, a birthday, Diwali..."} /></Field>
 
         {error && <p style={{ color: K.thread, fontSize: 13.5, marginBottom: 14, fontWeight: 600 }}>{error}</p>}
         <button onClick={handleSubmit} disabled={submitting} style={{ width: "100%", background: K.night, color: K.cream, border: "none", borderRadius: 12, padding: 14, fontSize: 15.5, cursor: submitting ? "wait" : "pointer", fontFamily: SANS, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: submitting ? 0.7 : 1 }}>
@@ -180,7 +240,8 @@ function RequestForm({ kind, walletBalance, onSubmit, onBack, submitting }) {
 }
 
 function ConfirmationScreen({ order, setScreen }) {
-  const c = KIND_COPY[order.kind];
+  const c = copyFor(order.direction, order.kind);
+  const isImport = order.direction === "from_india";
   return (
     <div style={{ maxWidth: 460, margin: "0 auto", padding: "48px 20px", textAlign: "center" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 60, height: 60, borderRadius: "50%", background: `${K.leaf}1A`, color: K.leaf, margin: "0 auto 18px" }}><Check size={30} /></div>
@@ -189,8 +250,9 @@ function ConfirmationScreen({ order, setScreen }) {
       <div style={{ background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 14, padding: 18, textAlign: "left", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><c.icon size={16} color={c.accent} /><span style={{ fontWeight: 700, color: K.ink, fontSize: 15 }}>{order.title}</span></div>
         <div style={{ fontSize: 13.5, color: K.slate, lineHeight: 1.7 }}>
-          <div>To: {order.recipient_name}</div><div>Budget: ${order.budget}</div>
+          <div>{isImport ? "Shipping to" : "To"}: {order.recipient_name}</div><div>Budget: ${order.budget}</div>
           {order.delivery_window && <div>Window: {order.delivery_window === "lunch" ? "Lunch · 12–2pm IST" : "Dinner · 7–10pm IST"}</div>}
+          {isImport && <div>From India → your US address</div>}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -257,7 +319,8 @@ function OrdersScreen({ orders, loading, onBack, onRefresh }) {
         {!loading && orders.length === 0 && <p style={{ color: K.slate, fontSize: 14 }}>Nothing yet — send your first request from the home screen.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {orders.map((o) => {
-            const c = KIND_COPY[o.kind] || KIND_COPY.food; const s = STATUS_COPY[o.status] || STATUS_COPY.requested;
+            const c = copyFor(o.direction, o.kind); const s = STATUS_COPY[o.status] || STATUS_COPY.requested;
+            const isImport = o.direction === "from_india";
             return (
               <div key={o.id} style={{ background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 14, padding: 15 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
@@ -267,8 +330,9 @@ function OrdersScreen({ orders, loading, onBack, onRefresh }) {
                   </div>
                   <span style={{ fontWeight: 700, fontSize: 14.5, color: K.ink }}>${o.budget}</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: s.color, background: `${s.color}14`, padding: "3px 9px", borderRadius: 999 }}>{s.label}</span>
+                  {isImport && <span style={{ fontSize: 11, fontWeight: 700, color: K.leaf, background: `${K.leaf}14`, padding: "3px 9px", borderRadius: 999 }}>From India</span>}
                 </div>
               </div>
             );
@@ -281,6 +345,7 @@ function OrdersScreen({ orders, loading, onBack, onRefresh }) {
 
 export default function App() {
   const [screen, setScreen] = useState("home");
+  const [direction, setDirection] = useState("to_india");
   const [walletBalance, setWalletBalance] = useState(150);
   const [ledger, setLedger] = useState([{ id: 1, amount: 100, date: "Recently", desc: "Wallet top-up" }, { id: 2, amount: 50, date: "Recently", desc: "Wallet top-up" }]);
   const [orders, setOrders] = useState([]);
@@ -313,6 +378,8 @@ export default function App() {
     setLedger((list) => [{ id: Date.now(), amount, date: "Today", desc: "Wallet top-up" }, ...list]);
   }
 
+  const isFormScreen = screen === "food" || screen === "clothing" || screen === "gift";
+
   return (
     <div style={{ fontFamily: SANS, background: K.cream, minHeight: "100vh", color: K.ink }}>
       <style>{`
@@ -325,8 +392,8 @@ export default function App() {
         .choice-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(20,27,52,0.10); }
       `}</style>
       <AppHeader setScreen={setScreen} walletBalance={walletBalance} />
-      {screen === "home" && <AppHome setScreen={setScreen} />}
-      {(screen === "food" || screen === "clothing") && <RequestForm kind={screen} walletBalance={walletBalance} onSubmit={handleSubmitOrder} onBack={() => setScreen("home")} submitting={submitting} />}
+      {screen === "home" && <AppHome setScreen={setScreen} direction={direction} setDirection={setDirection} />}
+      {isFormScreen && <RequestForm kind={screen} direction={direction} walletBalance={walletBalance} onSubmit={handleSubmitOrder} onBack={() => setScreen("home")} submitting={submitting} />}
       {screen === "wallet" && <WalletScreen balance={walletBalance} ledger={ledger} onAddFunds={handleAddFunds} onBack={() => setScreen("home")} />}
       {screen === "confirmation" && lastOrder && <ConfirmationScreen order={lastOrder} setScreen={setScreen} />}
       {screen === "orders" && <OrdersScreen orders={orders} loading={ordersLoading} onBack={() => setScreen("home")} onRefresh={loadOrders} />}
