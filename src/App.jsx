@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   UtensilsCrossed, Shirt, Wallet, Package, Receipt, ArrowLeft, Plus, Check,
   Link2, MapPin, Phone, User, Clock, Sparkles, ChevronRight, Loader2, Gem,
+  Stethoscope, HeartHandshake,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
@@ -36,9 +37,36 @@ const IMPORT_KIND_COPY = {
   grocery: { label: "groceries", accent: K.lamp, icon: UtensilsCrossed, linkLabel: "Link (optional)", linkPlaceholder: "Describe the snacks / groceries", notesLabel: "What to send", notesPlaceholder: "Snacks, spices, pickles", confirmWindow: "Coming soon." },
 };
 
+// Copy for the SERVICE flows (medical tourism, elder care — coordinator follows up)
+const SERVICE_KIND_COPY = {
+  medical: { label: "medical trip", accent: K.thread, icon: Stethoscope, confirmWindow: "A Sethu coordinator will reach out within one business day to plan the trip and send a quote." },
+  eldercare: { label: "elder care", accent: K.night, icon: HeartHandshake, confirmWindow: "A Sethu coordinator will reach out within one business day to set up care." },
+};
+
+// Field config for the two service forms
+const SERVICE_CONFIG = {
+  medical: {
+    heading: "Medical tourism",
+    intro: "Tell us who the trip is for and what care they need. Sethu plans hospitals, appointments, travel, and on-ground support — then sends you a quote.",
+    forLabel: "Who is the care for?", forPlaceholder: "Patient's name",
+    needLabel: "What care do they need?", needPlaceholder: "e.g. knee replacement, dental work, full check-up, fertility",
+    cityLabel: "Preferred city or hospital in India (optional)", cityPlaceholder: "e.g. Hyderabad, Apollo Chennai", cityRequired: false,
+    whenLabel: "Rough timeframe", whenPlaceholder: "e.g. next 2–3 months, flexible",
+  },
+  eldercare: {
+    heading: "Elder care",
+    intro: "Tell us about your parent or elder in India and what they need. A Sethu coordinator sets up regular visits and trusted on-ground help.",
+    forLabel: "Who needs care?", forPlaceholder: "Parent / elder's name",
+    needLabel: "What do they need?", needPlaceholder: "e.g. weekly check-in visits, doctor escort, groceries & errands, companionship",
+    cityLabel: "Their city in India", cityPlaceholder: "e.g. Visakhapatnam", cityRequired: true,
+    whenLabel: "How often?", whenPlaceholder: "e.g. weekly, twice a month, one-time",
+  },
+};
+
 const inputStyle = { width: "100%", border: `1px solid ${K.creamDeep}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, fontFamily: SANS, color: K.ink, background: "#fff", outline: "none", boxSizing: "border-box" };
 
 function copyFor(direction, kind) {
+  if (direction === "service") return SERVICE_KIND_COPY[kind] || SERVICE_KIND_COPY.medical;
   return (direction === "from_india" ? IMPORT_KIND_COPY : KIND_COPY)[kind] || KIND_COPY.food;
 }
 
@@ -60,35 +88,37 @@ function AppHeader({ setScreen, walletBalance }) {
   );
 }
 
-// Choices for each direction
+// Service tiles for each direction (rendered as an icon grid)
 const CHOICES = [
-  { kind: "food", title: "Order food", desc: "A meal delivered to their door, today.", icon: UtensilsCrossed, accent: K.lamp },
-  { kind: "clothing", title: "Order clothing", desc: "An outfit for the occasion, chosen by you.", icon: Shirt, accent: K.rose },
-  { kind: "gift", title: "Send a gift", desc: "Sweets, flowers, or something special.", icon: Package, accent: K.leaf },
-  { kind: "bills", title: "Pay a bill", desc: "Cover a utility or bill back home.", icon: Receipt, accent: K.slate, soon: true },
+  { kind: "food", title: "Food", desc: "A meal to their door, today.", icon: UtensilsCrossed, accent: K.lamp },
+  { kind: "clothing", title: "Clothing", desc: "An outfit for the occasion.", icon: Shirt, accent: K.rose },
+  { kind: "gift", title: "Gifts", desc: "Sweets, flowers, something special.", icon: Package, accent: K.leaf },
+  { kind: "bills", title: "Pay a bill", desc: "Cover a bill back home.", icon: Receipt, accent: K.slate, soon: true },
+  { kind: "medical", title: "Medical tourism", desc: "Coordinated care in India.", icon: Stethoscope, accent: K.thread },
+  { kind: "eldercare", title: "Elder care", desc: "Looking after parents on the ground.", icon: HeartHandshake, accent: K.night },
 ];
 
 const IMPORT_CHOICES = [
-  { kind: "clothing", title: "Order clothing from India", desc: "Sarees, kurtas, wedding wear — shipped to you.", icon: Shirt, accent: K.rose },
-  { kind: "gift", title: "Gifts & handicrafts", desc: "Jewelry, decor, festival items, sweets.", icon: Gem, accent: K.leaf },
-  { kind: "grocery", title: "Groceries & snacks", desc: "Indian snacks, spices, pickles.", icon: UtensilsCrossed, accent: K.lamp, soon: true },
+  { kind: "clothing", title: "Clothing", desc: "Sarees, kurtas, wedding wear.", icon: Shirt, accent: K.rose },
+  { kind: "gift", title: "Gifts & crafts", desc: "Jewelry, decor, festival items.", icon: Gem, accent: K.leaf },
+  { kind: "grocery", title: "Groceries", desc: "Snacks, spices, pickles.", icon: UtensilsCrossed, accent: K.lamp, soon: true },
 ];
 
-function ChoiceCard({ choice, onClick }) {
+function GridTile({ choice, onClick }) {
   const Icon = choice.icon;
   const disabled = !!choice.soon;
   return (
-    <button onClick={disabled ? undefined : onClick} disabled={disabled} className={disabled ? "" : "choice-lift"} style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", textAlign: "left", background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 16, padding: 20, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1, position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 52, height: 52, borderRadius: 12, background: `${choice.accent}1A`, color: choice.accent }}>
-        <Icon size={24} />
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} className={disabled ? "" : "choice-lift"} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12, width: "100%", height: "100%", minHeight: 150, textAlign: "left", background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 18, padding: 18, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.65 : 1, position: "relative" }}>
+      {choice.soon && (
+        <span style={{ position: "absolute", top: 12, right: 12, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: K.slate, background: K.creamDeep, padding: "3px 8px", borderRadius: 999 }}>SOON</span>
+      )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: 13, background: `${choice.accent}1A`, color: choice.accent }}>
+        <Icon size={23} />
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, color: K.ink }}>{choice.title}</div>
-        <div style={{ fontSize: 14, color: K.slate, marginTop: 2 }}>{choice.desc}</div>
+      <div style={{ marginTop: "auto" }}>
+        <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: K.ink, lineHeight: 1.2 }}>{choice.title}</div>
+        <div style={{ fontSize: 12.5, color: K.slate, marginTop: 3, lineHeight: 1.35 }}>{choice.desc}</div>
       </div>
-      {choice.soon
-        ? <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: K.slate, background: K.creamDeep, padding: "4px 10px", borderRadius: 999 }}>SOON</span>
-        : <ChevronRight size={20} color={K.slate} />}
     </button>
   );
 }
@@ -120,9 +150,9 @@ function AppHome({ setScreen, direction, setDirection }) {
       <p style={{ color: K.slate, fontSize: 15, margin: "0 0 26px" }}>
         {isImport ? "What should we send you from India?" : "What are you sending home today?"}
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "stretch" }}>
         {choices.map((choice) => (
-          <ChoiceCard key={choice.kind} choice={choice} onClick={() => setScreen(choice.kind)} />
+          <GridTile key={choice.kind} choice={choice} onClick={() => setScreen(choice.kind)} />
         ))}
       </div>
     </div>
@@ -239,20 +269,96 @@ function RequestForm({ kind, direction, walletBalance, onSubmit, onBack, submitt
   );
 }
 
+function ServiceForm({ kind, onSubmit, onBack, submitting }) {
+  const c = copyFor("service", kind);
+  const cfg = SERVICE_CONFIG[kind] || SERVICE_CONFIG.medical;
+  const [forName, setForName] = useState(""); const [need, setNeed] = useState("");
+  const [city, setCity] = useState(""); const [when, setWhen] = useState("");
+  const [details, setDetails] = useState("");
+  const [yourName, setYourName] = useState(""); const [yourPhone, setYourPhone] = useState(""); const [yourEmail, setYourEmail] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSubmit() {
+    if (!forName.trim()) return setError(kind === "medical" ? "Add who the care is for." : "Add who needs care.");
+    if (!need.trim()) return setError("Tell us what they need.");
+    if (cfg.cityRequired && !city.trim()) return setError("Add their city in India.");
+    if (!yourName.trim() || !yourPhone.trim()) return setError("Add your name and phone so a coordinator can reach you.");
+    setError("");
+    const contact = `Requested by ${yourName}${yourEmail.trim() ? ` · ${yourEmail.trim()}` : ""}`;
+    const notes = [details.trim(), contact].filter(Boolean).join("\n");
+    onSubmit({
+      direction: "service",
+      kind,
+      title: kind === "medical" ? `Medical trip — ${forName}` : `Elder care — ${forName}`,
+      recipient_name: forName,
+      recipient_phone: yourPhone,
+      recipient_address: city,
+      item_link: "",
+      notes,
+      budget: 0,
+      delivery_window: when || null,
+      occasion: need,
+    });
+  }
+
+  return (
+    <div style={{ maxWidth: 460, margin: "0 auto", paddingBottom: 40 }}>
+      <BackBar onBack={onBack} />
+      <div style={{ padding: "8px 20px 0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <c.icon size={20} color={c.accent} />
+          <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: K.ink, margin: 0 }}>{cfg.heading}</h2>
+        </div>
+        <p style={{ color: K.slate, fontSize: 14, margin: "0 0 22px" }}>{cfg.intro}</p>
+
+        <Field label={cfg.forLabel} icon={User}><input style={inputStyle} value={forName} onChange={(e) => setForName(e.target.value)} placeholder={cfg.forPlaceholder} /></Field>
+        <Field label={cfg.needLabel}><textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} value={need} onChange={(e) => setNeed(e.target.value)} placeholder={cfg.needPlaceholder} /></Field>
+        <Field label={cfg.cityLabel} icon={MapPin}><input style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} placeholder={cfg.cityPlaceholder} /></Field>
+        <Field label={cfg.whenLabel} icon={Clock}><input style={inputStyle} value={when} onChange={(e) => setWhen(e.target.value)} placeholder={cfg.whenPlaceholder} /></Field>
+        <Field label="Anything else? (optional)" icon={Sparkles}><textarea style={{ ...inputStyle, minHeight: 56, resize: "vertical" }} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Mobility needs, language, past reports, preferences…" /></Field>
+
+        <div style={{ height: 1, background: K.creamDeep, margin: "6px 0 20px" }} />
+        <Field label="Your name" icon={User}><input style={inputStyle} value={yourName} onChange={(e) => setYourName(e.target.value)} placeholder="Your name" /></Field>
+        <Field label="Your phone" icon={Phone}><input style={inputStyle} value={yourPhone} onChange={(e) => setYourPhone(e.target.value)} placeholder="+1 ..." /></Field>
+        <Field label="Your email (optional)" icon={Link2}><input style={inputStyle} value={yourEmail} onChange={(e) => setYourEmail(e.target.value)} placeholder="you@email.com" /></Field>
+
+        {error && <p style={{ color: K.thread, fontSize: 13.5, marginBottom: 14, fontWeight: 600 }}>{error}</p>}
+        <button onClick={handleSubmit} disabled={submitting} style={{ width: "100%", background: K.night, color: K.cream, border: "none", borderRadius: 12, padding: 14, fontSize: 15.5, cursor: submitting ? "wait" : "pointer", fontFamily: SANS, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: submitting ? 0.7 : 1 }}>
+          {submitting ? <><Loader2 size={16} className="spin" /> Sending…</> : "Request a callback"}
+        </button>
+        <p style={{ color: K.slate, fontSize: 12.5, marginTop: 10, textAlign: "center" }}>{c.confirmWindow}</p>
+      </div>
+    </div>
+  );
+}
+
 function ConfirmationScreen({ order, setScreen }) {
   const c = copyFor(order.direction, order.kind);
   const isImport = order.direction === "from_india";
+  const isService = order.direction === "service";
   return (
     <div style={{ maxWidth: 460, margin: "0 auto", padding: "48px 20px", textAlign: "center" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 60, height: 60, borderRadius: "50%", background: `${K.leaf}1A`, color: K.leaf, margin: "0 auto 18px" }}><Check size={30} /></div>
-      <h2 style={{ fontFamily: SERIF, fontSize: 25, fontWeight: 600, color: K.ink, marginBottom: 8 }}>Request sent.</h2>
+      <h2 style={{ fontFamily: SERIF, fontSize: 25, fontWeight: 600, color: K.ink, marginBottom: 8 }}>{isService ? "Request received." : "Request sent."}</h2>
       <p style={{ color: K.slate, fontSize: 14.5, marginBottom: 26 }}>{c.confirmWindow}</p>
       <div style={{ background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 14, padding: 18, textAlign: "left", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><c.icon size={16} color={c.accent} /><span style={{ fontWeight: 700, color: K.ink, fontSize: 15 }}>{order.title}</span></div>
         <div style={{ fontSize: 13.5, color: K.slate, lineHeight: 1.7 }}>
-          <div>{isImport ? "Shipping to" : "To"}: {order.recipient_name}</div><div>Budget: ${order.budget}</div>
-          {order.delivery_window && <div>Window: {order.delivery_window === "lunch" ? "Lunch · 12–2pm IST" : "Dinner · 7–10pm IST"}</div>}
-          {isImport && <div>From India → your US address</div>}
+          {isService ? (
+            <>
+              <div>For: {order.recipient_name}</div>
+              {order.occasion && <div>Need: {order.occasion}</div>}
+              {order.recipient_address && <div>City: {order.recipient_address}</div>}
+              {order.delivery_window && <div>When: {order.delivery_window}</div>}
+              <div>We'll call {order.recipient_phone}</div>
+            </>
+          ) : (
+            <>
+              <div>{isImport ? "Shipping to" : "To"}: {order.recipient_name}</div><div>Budget: ${order.budget}</div>
+              {order.delivery_window && <div>Window: {order.delivery_window === "lunch" ? "Lunch · 12–2pm IST" : "Dinner · 7–10pm IST"}</div>}
+              {isImport && <div>From India → your US address</div>}
+            </>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -321,6 +427,7 @@ function OrdersScreen({ orders, loading, onBack, onRefresh }) {
           {orders.map((o) => {
             const c = copyFor(o.direction, o.kind); const s = STATUS_COPY[o.status] || STATUS_COPY.requested;
             const isImport = o.direction === "from_india";
+            const isService = o.direction === "service";
             return (
               <div key={o.id} style={{ background: "#fff", border: `1px solid ${K.creamDeep}`, borderRadius: 14, padding: 15 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
@@ -328,11 +435,14 @@ function OrdersScreen({ orders, loading, onBack, onRefresh }) {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 9, background: `${c.accent}1A`, color: c.accent }}><c.icon size={16} /></div>
                     <div><div style={{ fontWeight: 700, fontSize: 14.5, color: K.ink }}>{o.title}</div><div style={{ fontSize: 12.5, color: K.slate }}>{o.recipient_name}{o.recipient_address ? ` · ${(o.recipient_address.split(",")[0] || "").trim()}` : ""}</div></div>
                   </div>
-                  <span style={{ fontWeight: 700, fontSize: 14.5, color: K.ink }}>${o.budget}</span>
+                  {isService
+                    ? <span style={{ fontSize: 12.5, fontWeight: 600, color: K.slate }}>Quote TBD</span>
+                    : <span style={{ fontWeight: 700, fontSize: 14.5, color: K.ink }}>${o.budget}</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: s.color, background: `${s.color}14`, padding: "3px 9px", borderRadius: 999 }}>{s.label}</span>
                   {isImport && <span style={{ fontSize: 11, fontWeight: 700, color: K.leaf, background: `${K.leaf}14`, padding: "3px 9px", borderRadius: 999 }}>From India</span>}
+                  {isService && <span style={{ fontSize: 11, fontWeight: 700, color: c.accent, background: `${c.accent}14`, padding: "3px 9px", borderRadius: 999 }}>{o.kind === "medical" ? "Medical" : "Elder care"}</span>}
                 </div>
               </div>
             );
@@ -366,9 +476,11 @@ export default function App() {
     setSubmitting(true);
     const { error } = await supabase.from("orders").insert([{ ...order, status: "requested" }]);
     setSubmitting(false);
-    if (error) { alert("Something went wrong saving your order. Please try again."); return; }
-    setWalletBalance((b) => b - order.budget);
-    setLedger((list) => [{ id: Date.now(), amount: -order.budget, date: "Today", desc: order.title }, ...list]);
+    if (error) { alert("Something went wrong saving your request. Please try again."); return; }
+    if (order.direction !== "service") {
+      setWalletBalance((b) => b - order.budget);
+      setLedger((list) => [{ id: Date.now(), amount: -order.budget, date: "Today", desc: order.title }, ...list]);
+    }
     setLastOrder(order);
     setScreen("confirmation");
   }
@@ -379,6 +491,7 @@ export default function App() {
   }
 
   const isFormScreen = screen === "food" || screen === "clothing" || screen === "gift";
+  const isServiceScreen = screen === "medical" || screen === "eldercare";
 
   return (
     <div style={{ fontFamily: SANS, background: K.cream, minHeight: "100vh", color: K.ink }}>
@@ -394,6 +507,7 @@ export default function App() {
       <AppHeader setScreen={setScreen} walletBalance={walletBalance} />
       {screen === "home" && <AppHome setScreen={setScreen} direction={direction} setDirection={setDirection} />}
       {isFormScreen && <RequestForm kind={screen} direction={direction} walletBalance={walletBalance} onSubmit={handleSubmitOrder} onBack={() => setScreen("home")} submitting={submitting} />}
+      {isServiceScreen && <ServiceForm kind={screen} onSubmit={handleSubmitOrder} onBack={() => setScreen("home")} submitting={submitting} />}
       {screen === "wallet" && <WalletScreen balance={walletBalance} ledger={ledger} onAddFunds={handleAddFunds} onBack={() => setScreen("home")} />}
       {screen === "confirmation" && lastOrder && <ConfirmationScreen order={lastOrder} setScreen={setScreen} />}
       {screen === "orders" && <OrdersScreen orders={orders} loading={ordersLoading} onBack={() => setScreen("home")} onRefresh={loadOrders} />}
